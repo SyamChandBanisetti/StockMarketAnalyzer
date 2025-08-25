@@ -14,9 +14,14 @@ st.markdown("""
 
 st.markdown('<p class="big-font">📊 Stock Analyzer Dashboard</p>', unsafe_allow_html=True)
 
-# --- 1️⃣ Stock Input ---
-st.markdown('<p class="section-header">Enter Stock Symbol</p>', unsafe_allow_html=True)
-stock_input = st.text_input("Stock Symbol (e.g., AAPL, MSFT):", "AAPL")
+# --- 1️⃣ Stock Input via Selectbox ---
+st.markdown('<p class="section-header">Select Stock Symbol</p>', unsafe_allow_html=True)
+reputed_stocks = [
+    'AAPL','MSFT','GOOGL','AMZN','TSLA','FB','NVDA','JPM','V','DIS',
+    'MA','PYPL','NFLX','ADBE','INTC','CSCO','CRM','ORCL','NKE','KO',
+    'PFE','MRK','ABBV','PEP','XOM','CVX','WMT','T','UNH','HD'
+]
+stock_input = st.selectbox("Choose Stock:", reputed_stocks, index=1)  # default MSFT
 
 if stock_input:
     # Fetch last 1 year stock data
@@ -45,11 +50,51 @@ if stock_input:
                 trend = "The stock is trending **below its 1-year average**."
             st.write(f"- **Trend Insight:** {trend}")
 
-            # --- Final Verdict ---
-            st.markdown('<p class="section-header">💡 Final Verdict</p>', unsafe_allow_html=True)
-            verdict, confidence = get_gemini_verdict(stock_input, df['Close'].tolist())
+            # --- Final Verdict & Suggestions ---
+            st.markdown('<p class="section-header">💡 Recommendation & Insights</p>', unsafe_allow_html=True)
+
+            # Convert Close prices to Python float list
+            close_prices_list = df['Close'].astype(float).tolist()
+
+            # Get verdict + textual suggestion (API call)
+            verdict, confidence = get_gemini_verdict(stock_input, close_prices_list)
+
+            # Map verdict to color
             color = "green" if verdict=="BUY" else "red" if verdict=="SELL" else "orange"
-            st.markdown(f"<h3 style='color:{color};'>Verdict: {verdict} (Confidence: {int(confidence*100)}%)</h3>", unsafe_allow_html=True)
+
+            # Display main verdict
+            st.markdown(f"<h3 style='color:{color};'>Recommendation: {verdict} (Confidence: {int(confidence*100)}%)</h3>", unsafe_allow_html=True)
+
+            # --- Generate textual suggestions from API (without mentioning Gemini) ---
+            try:
+                # Here we can reuse the same API to get text insight
+                # For simplicity, the function returns a tuple (verdict, insight)
+                # We'll just display insight text
+                import requests, os
+                from dotenv import load_dotenv
+                load_dotenv()
+                GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+                GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+
+                prompt_text = f"Analyze the stock {stock_input} for last 1 year prices and provide a short actionable insight, without mentioning the source."
+                headers = {
+                    "Authorization": f"Bearer {GEMINI_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+                data = {
+                    "prompt": {"text": prompt_text},
+                    "temperature": 0.3,
+                    "maxOutputTokens": 150
+                }
+                response = requests.post(GEMINI_API_URL, headers=headers, json=data)
+                result = response.json()
+                insight_text = result.get("candidates", [{}])[0].get("output", {}).get("content", [{}])[0].get("text", "")
+                if insight_text:
+                    st.write(f"**Insight:** {insight_text.strip()}")
+                else:
+                    st.info("No additional insights available.")
+            except Exception as e:
+                st.info("Unable to fetch additional insights at this time.")
 
     except Exception as e:
         st.error(f"Error fetching stock data: {e}")
