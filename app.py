@@ -49,11 +49,43 @@ else:
     kpi3.metric("1-Year High", f"${high}")
     kpi4.metric("1-Year Low", f"${low}")
 
-    # --- 4️⃣ Price Trend ---
-    st.markdown('<p class="section-header">4️⃣ Price Trend</p>', unsafe_allow_html=True)
+    # --- 4️⃣ Price Trend (Candlestick + Moving Average) ---
+    st.markdown('<p class="section-header">4️⃣ Price Trend & Moving Average</p>', unsafe_allow_html=True)
+    
+    if 'Date' not in main_stock_df.columns:
+        main_stock_df = main_stock_df.reset_index()
+
+    # Compute 20-day moving average
+    main_stock_df['MA20'] = main_stock_df['Close'].rolling(window=20).mean()
+
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=main_stock_df['Date'], y=main_stock_df['Close'], mode='lines', name='Close Price'))
-    fig.update_layout(title=f"{stock_input} Price Trend (1Y)", xaxis_title="Date", yaxis_title="Price (USD)")
+
+    # Candlestick
+    fig.add_trace(go.Candlestick(
+        x=main_stock_df['Date'],
+        open=main_stock_df['Open'],
+        high=main_stock_df['High'],
+        low=main_stock_df['Low'],
+        close=main_stock_df['Close'],
+        name='Candlestick'
+    ))
+
+    # Moving average line
+    fig.add_trace(go.Scatter(
+        x=main_stock_df['Date'],
+        y=main_stock_df['MA20'],
+        mode='lines',
+        line=dict(color='blue', width=2),
+        name='20-Day MA'
+    ))
+
+    fig.update_layout(
+        title=f"{stock_input} Candlestick & 20-Day MA (1Y)",
+        xaxis_title="Date",
+        yaxis_title="Price (USD)",
+        xaxis_rangeslider_visible=False
+    )
+
     st.plotly_chart(fig, use_container_width=True)
 
     # --- 5️⃣ Gemini Verdict ---
