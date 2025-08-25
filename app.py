@@ -69,6 +69,11 @@ if stock_input:
         if df.empty or 'Close' not in df.columns:
             st.error("No data found for this symbol or 'Close' column is missing.")
         else:
+            # Ensure 'Close' column is a pandas Series
+            if not isinstance(df['Close'], pd.Series):
+                st.error("Error: 'Close' data is not in expected Series format. Cannot proceed with analysis.")
+                st.stop() # Stop execution if data is not as expected
+
             # --- KPIs & Insights ---
             latest = int(round(df['Close'].iloc[-1]))
             avg_price = int(round(df['Close'].mean()))
@@ -96,12 +101,13 @@ if stock_input:
                 api_key_param = f"key={AI_SERVICE_API_KEY}" if AI_SERVICE_API_KEY else ""
                 ai_api_url = f"{AI_SERVICE_API_BASE_URL}?{api_key_param}"
 
-                # Construct the prompt to request both verdict and insight in JSON format
+                # Construct the prompt using summary statistics instead of the full list
                 prompt_text = (
-                    f"Analyze the stock {stock_input} based on its last 1 year closing prices. "
-                    f"The closing prices are: {df['Close'].astype(float).tolist()}. "
+                    f"Analyze the stock {stock_input} based on the following 1-year data: "
+                    f"Latest Price: ${latest}, 1-Year High: ${high_price}, 1-Year Low: ${low_price}, "
+                    f"Average Price (1Y): ${avg_price}. "
                     f"Provide a stock recommendation (BUY, SELL, or HOLD) and a concise, actionable insight "
-                    f"focusing on future outlook based on recent trends. "
+                    f"focusing on future outlook based on these key statistics and recent trends. "
                     f"Respond only in JSON format with two keys: 'verdict' (string) and 'insight' (string)."
                 )
 
@@ -150,10 +156,10 @@ if stock_input:
                             confidence = 0.8
                         else:
                             confidence = 0.6
-                    except json.JSONDecodeError:
-                        st.error("Error parsing response from analytics model. Received unexpected format.")
+                    except json.JSONDecodeError as json_e:
+                        st.error(f"Error parsing response from analytics model: {json_e}. Received unexpected format: {raw_json_text[:500]}...")
                 else:
-                    st.info("No structured insights available from the analytics model.")
+                    st.info("No structured insights available from the analytics model, or response was empty.")
 
                 # Map verdict to color
                 color = "green" if verdict=="BUY" else "red" if verdict=="SELL" else "orange"
@@ -166,8 +172,10 @@ if stock_input:
                 st.error(f"Error communicating with the analytics model: {req_e}. Please ensure your API key is correctly configured and check your network connection.")
             except Exception as e:
                 st.info(f"An unexpected error occurred while fetching analytics insights: {e}")
+                # For more detailed debugging, uncomment the next line to show the full traceback in Streamlit
+                # st.exception(e)
 
     except Exception as e:
         st.error(f"Error fetching stock data: {e}. Please ensure the stock symbol is valid and try again.")
-        # For debugging, you can uncomment the line below to see the full traceback in Streamlit
+        # For more detailed debugging, uncomment the next line to show the full traceback in Streamlit
         # st.exception(e)
