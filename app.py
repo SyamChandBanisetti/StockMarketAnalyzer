@@ -4,7 +4,6 @@ import plotly.graph_objects as go
 from utils.data_fetch import get_stock_data
 from utils.gemini_api import get_gemini_verdict
 from utils.kpi_utils import calculate_kpis, compare_stocks
-import math
 
 # --- Streamlit Page Setup ---
 st.set_page_config(page_title="Stock Analyzer", layout="wide")
@@ -36,27 +35,19 @@ if main_stock_df is None or main_stock_df.empty or 'Close' not in main_stock_df.
 else:
     # --- 3️⃣ KPIs ---
     st.markdown('<p class="section-header">3️⃣ Stock KPIs</p>', unsafe_allow_html=True)
-
-    def safe_number(val):
-        try:
-            num = float(val)
-            if math.isnan(num):
-                return 0.0
-            return num
-        except:
-            return 0.0
-
     latest, avg, high, low = calculate_kpis(main_stock_df)
-    latest = safe_number(latest)
-    avg = safe_number(avg)
-    high = safe_number(high)
-    low = safe_number(low)
+
+    # Convert to nearest integer
+    latest = int(round(latest))
+    avg = int(round(avg))
+    high = int(round(high))
+    low = int(round(low))
 
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    kpi1.metric("Latest Price", f"${latest:.2f}")
-    kpi2.metric("Average Price (1Y)", f"${avg:.2f}")
-    kpi3.metric("1-Year High", f"${high:.2f}")
-    kpi4.metric("1-Year Low", f"${low:.2f}")
+    kpi1.metric("Latest Price", f"${latest}")
+    kpi2.metric("Average Price (1Y)", f"${avg}")
+    kpi3.metric("1-Year High", f"${high}")
+    kpi4.metric("1-Year Low", f"${low}")
 
     # --- 4️⃣ Price Trend ---
     st.markdown('<p class="section-header">4️⃣ Price Trend</p>', unsafe_allow_html=True)
@@ -69,7 +60,7 @@ else:
     st.markdown('<p class="section-header">5️⃣ Buy/Sell/Hold Verdict</p>', unsafe_allow_html=True)
     verdict, confidence = get_gemini_verdict(stock_input, main_stock_df['Close'].tolist())
     color = "green" if verdict=="BUY" else "red" if verdict=="SELL" else "orange"
-    st.markdown(f"<h3 style='color:{color};'>💡 Verdict: {verdict} (Confidence: {confidence*100:.1f}%)</h3>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='color:{color};'>💡 Verdict: {verdict} (Confidence: {int(confidence*100)}%)</h3>", unsafe_allow_html=True)
 
     # --- 6️⃣ Comparison Table ---
     st.markdown('<p class="section-header">6️⃣ Comparison with Selected Stocks</p>', unsafe_allow_html=True)
@@ -77,7 +68,7 @@ else:
     for symbol in selected_stocks:
         df = get_stock_data(symbol)
         if df is not None and not df.empty and 'Close' in df.columns:
-            comparison_data[symbol] = safe_number(df['Close'].iloc[-1])
+            comparison_data[symbol] = int(round(df['Close'].iloc[-1]))
 
     if comparison_data:
         comp_df = pd.DataFrame(list(comparison_data.items()), columns=['Stock','Latest Close'])
