@@ -69,12 +69,12 @@ if stock_input:
         if df.empty or 'Close' not in df.columns:
             st.error("No data found for this symbol or 'Close' column is missing.")
         else:
-            # Ensure 'Close' column is a pandas Series
-            if not isinstance(df['Close'], pd.Series):
-                st.error("Error: 'Close' data is not in expected Series format. Cannot proceed with analysis.")
-                st.stop() # Stop execution if data is not as expected
-
             # --- KPIs & Insights ---
+            # Ensure 'Close' column contains numerical data before calculations
+            if df['Close'].isnull().all():
+                st.error("Error: 'Close' column contains no valid numerical data. Cannot proceed with analysis.")
+                st.stop()
+            
             latest = int(round(df['Close'].iloc[-1]))
             avg_price = int(round(df['Close'].mean()))
             high_price = int(round(df['Close'].max()))
@@ -101,7 +101,7 @@ if stock_input:
                 api_key_param = f"key={AI_SERVICE_API_KEY}" if AI_SERVICE_API_KEY else ""
                 ai_api_url = f"{AI_SERVICE_API_BASE_URL}?{api_key_param}"
 
-                # Construct the prompt using summary statistics instead of the full list
+                # Construct the prompt using summary statistics
                 prompt_text = (
                     f"Analyze the stock {stock_input} based on the following 1-year data: "
                     f"Latest Price: ${latest}, 1-Year High: ${high_price}, 1-Year Low: ${low_price}, "
