@@ -19,7 +19,7 @@ AI_SERVICE_API_KEY = os.getenv("AI_SERVICE_API_KEY", "") # Load from environment
 # The model name 'gemini-2.5-flash-preview-05-20' is part of the URL,
 # but we are using a generic API_SERVICE_API_KEY variable and avoiding
 # mentioning "Gemini" in the UI-facing text.
-AI_SERVICE_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent"
+AI_SERVICE_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 # --- Exponential Backoff for API Calls ---
 def call_api_with_backoff(url, headers, payload, max_retries=5, initial_delay=1):
@@ -67,14 +67,19 @@ if stock_input:
         df.reset_index(inplace=True)
 
         if df.empty or 'Close' not in df.columns:
-            st.error("No data found for this symbol or 'Close' column is missing.")
+            st.error(f"No data found for symbol '{stock_input}'. Please ensure it is a valid stock ticker.")
+            st.stop()
         else:
-            # --- KPIs & Insights ---
-            # Ensure 'Close' column contains numerical data before calculations
-            if df['Close'].isnull().all():
-                st.error("Error: 'Close' column contains no valid numerical data. Cannot proceed with analysis.")
+            # --- CRITICAL FIX: Explicitly convert 'Close' column to numeric, coercing errors to NaN ---
+            df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
+
+            # --- CRITICAL FIX: Check if the 'Close' Series is empty or all NaN after coercion ---
+            if df['Close'].empty or df['Close'].isnull().all():
+                st.error(f"Error: No valid numerical 'Close' price data found for '{stock_input}' after processing. Cannot proceed with analysis. Please try a different symbol or check the market hours.")
                 st.stop()
             
+            # --- KPIs & Insights ---
+            # All these operations should now be safe as df['Close'] is guaranteed to be a non-empty, numeric Series
             latest = int(round(df['Close'].iloc[-1]))
             avg_price = int(round(df['Close'].mean()))
             high_price = int(round(df['Close'].max()))
@@ -176,6 +181,6 @@ if stock_input:
                 # st.exception(e)
 
     except Exception as e:
-        st.error(f"Error fetching stock data: {e}. Please ensure the stock symbol is valid and try again.")
+        st.error(f"Error fetching stock data: {e}. Please ensure the stock symbol is a valid ticker (e.g., 'AAPL', 'MSFT', 'TSLA') and try again. Sometimes data may not be available during off-market hours or for less common symbols.")
         # For more detailed debugging, uncomment the next line to show the full traceback in Streamlit
         # st.exception(e)
