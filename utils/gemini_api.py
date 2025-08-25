@@ -1,6 +1,7 @@
 import os
 import requests
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -10,22 +11,28 @@ def get_gemini_verdict(company_name: str):
     """
     Returns: (verdict: str, confidence: float, insights: str)
     """
+    # Construct prompt
     prompt_text = (
         f"Analyze the company '{company_name}' and provide:\n"
         "- A simple stock recommendation: BUY, SELL, or HOLD\n"
         "- A confidence level (0-1)\n"
         "- A short actionable insight for investors\n"
-        "Return in JSON format: {{'verdict':'', 'confidence':0.0, 'insights':''}}"
+        "Return in JSON format: {'verdict':'', 'confidence':0.0, 'insights':''}"
     )
 
     headers = {
-        "Authorization": f"Bearer {GEMINI_API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "X-goog-api-key": GEMINI_API_KEY
     }
+
     data = {
-        "prompt": {"text": prompt_text},
-        "temperature": 0.3,
-        "maxOutputTokens": 200
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt_text}
+                ]
+            }
+        ]
     }
 
     response = requests.post(GEMINI_API_URL, headers=headers, json=data)
@@ -33,9 +40,10 @@ def get_gemini_verdict(company_name: str):
     result = response.json()
 
     try:
-        text_output = result.get("candidates", [{}])[0].get("output", {}).get("content", [{}])[0].get("text", "")
-        # Parse JSON string returned from LLM
-        import json
+        # Extract generated text
+        text_output = result["candidates"][0]["content"][0]["text"]
+
+        # Parse JSON returned from LLM
         parsed = json.loads(text_output)
         verdict = parsed.get("verdict", "HOLD")
         confidence = float(parsed.get("confidence", 0.7))
