@@ -4,40 +4,41 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import requests
-import json # Import json for constructing the payload
+import json
+import time
+import os # Import os for environment variables
 
-# --- Placeholder for API_KEY ---
+# --- Placeholder for AI_SERVICE_API_KEY ---
 # IMPORTANT: For local development, set this as an environment variable (e.g., in a .env file)
 # or replace "" with your actual API key for the AI service you are using.
 # For Canvas/Streamlit Cloud, ensure your environment variables are correctly configured.
-AI_SERVICE_API_KEY = "" # Leave empty for Canvas's auto-injection or put your key here for local testing
+AI_SERVICE_API_KEY = os.getenv("AI_SERVICE_API_KEY", "") # Load from environment or use empty string
 
-# --- Mock get_ai_verdict function ---
-# This is a placeholder as the original utils/gemini_api.py was not provided.
-# If you have your actual implementation for an AI-powered verdict, replace this mock with it.
-def get_ai_verdict(stock_symbol: str, close_prices: list):
+# --- AI Service URL (generic reference) ---
+# This URL points to a generative AI model endpoint.
+# The model name 'gemini-2.5-flash-preview-05-20' is part of the URL,
+# but we are using a generic API_SERVICE_API_KEY variable and avoiding
+# mentioning "Gemini" in the UI-facing text.
+AI_SERVICE_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent"
+
+# --- Exponential Backoff for API Calls ---
+def call_api_with_backoff(url, headers, payload, max_retries=5, initial_delay=1):
     """
-    Mocks a function that interacts with an AI model
-    to analyze stock prices and provide a verdict.
+    Calls an API with exponential backoff.
     """
-    if not close_prices:
-        return "HOLD", 0.5
-
-    latest_price = close_prices[-1]
-    average_price = sum(close_prices) / len(close_prices)
-
-    # Simple mock logic based on last price vs. average
-    if latest_price > average_price * 1.05: # More than 5% above average
-        verdict = "SELL"
-        confidence = 0.8
-    elif latest_price < average_price * 0.95: # More than 5% below average
-        verdict = "BUY"
-        confidence = 0.7
-    else:
-        verdict = "HOLD"
-        confidence = 0.6
-    return verdict, confidence
-
+    for i in range(max_retries):
+        try:
+            response = requests.post(url, headers=headers, data=json.dumps(payload))
+            response.raise_for_status() # Raise an HTTPError for bad responses (4xx or 5xx)
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            if i < max_retries - 1:
+                delay = initial_delay * (2 ** i)
+                st.warning(f"API call failed ({e}). Retrying in {delay} seconds...")
+                time.sleep(delay)
+            else:
+                raise # Re-raise the last exception if max retries reached
+    return None
 
 # --- Streamlit Setup ---
 st.set_page_config(page_title="Stock Analyzer", layout="centered")
@@ -87,33 +88,23 @@ if stock_input:
                 trend = "The stock is trending **below its 1-year average**."
             st.write(f"- **Trend Insight:** {trend}")
 
-            # --- Final Verdict & Suggestions ---
+            # --- Final Verdict & Suggestions from Analytics Model ---
             st.markdown('<p class="section-header">💡 Recommendation & Insights</p>', unsafe_allow_html=True)
 
-            # Convert Close prices to Python float list
-            close_prices_list = df['Close'].astype(float).tolist()
-
-            # Get verdict + textual suggestion (API call) using the mock function
-            verdict, confidence = get_ai_verdict(stock_input, close_prices_list)
-
-            # Map verdict to color
-            color = "green" if verdict=="BUY" else "red" if verdict=="SELL" else "orange"
-
-            # Display main verdict
-            st.markdown(f"<h3 style='color:{color};'>Recommendation: {verdict} (Confidence: {int(confidence*100)}%)</h3>", unsafe_allow_html=True)
-
-            # --- Generate textual suggestions from analytics model ---
             try:
-                # Using the recommended API structure for Python
-                # API key is passed as a query parameter if available
+                # Prepare AI service API URL with key
                 api_key_param = f"key={AI_SERVICE_API_KEY}" if AI_SERVICE_API_KEY else ""
-                # Note: The model name `gemini-2.5-flash-preview-05-20` is part of the URL,
-                # but we are using a generic API_SERVICE_API_KEY variable and avoiding
-                # mentioning "Gemini" in the UI-facing text.
-                AI_SERVICE_API_URL = f"[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent)?{api_key_param}"
+                ai_api_url = f"{AI_SERVICE_API_BASE_URL}?{api_key_param}"
 
+                # Construct the prompt to request both verdict and insight in JSON format
+                prompt_text = (
+                    f"Analyze the stock {stock_input} based on its last 1 year closing prices. "
+                    f"The closing prices are: {df['Close'].astype(float).tolist()}. "
+                    f"Provide a stock recommendation (BUY, SELL, or HOLD) and a concise, actionable insight "
+                    f"focusing on future outlook based on recent trends. "
+                    f"Respond only in JSON format with two keys: 'verdict' (string) and 'insight' (string)."
+                )
 
-                prompt_text = f"Analyze the stock {stock_input} based on its last 1 year prices and provide a short actionable insight. Focus on future outlook based on recent trends."
                 payload = {
                     "contents": [
                         {
@@ -123,27 +114,54 @@ if stock_input:
                     ],
                     "generationConfig": {
                         "temperature": 0.3,
-                        "maxOutputTokens": 150
+                        "maxOutputTokens": 200, # Increased token limit for both verdict and insight
+                        "responseMimeType": "application/json",
+                        "responseSchema": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "verdict": {"type": "STRING", "enum": ["BUY", "SELL", "HOLD"]},
+                                "insight": {"type": "STRING"}
+                            },
+                            "required": ["verdict", "insight"]
+                        }
                     }
                 }
                 headers = {
                     "Content-Type": "application/json"
                 }
 
+                verdict = "HOLD" # Default verdict
+                confidence = 0.5 # Default confidence
+                insight_text = "No additional insights available from the analytics model."
+
                 with st.spinner("Fetching analytics insights..."):
-                    response = requests.post(AI_SERVICE_API_URL, headers=headers, data=json.dumps(payload))
-                    response.raise_for_status() # Raise an HTTPError for bad responses (4xx or 5xx)
-                    result = response.json()
+                    result = call_api_with_backoff(ai_api_url, headers, payload)
 
-                insight_text = ""
-                # Correct parsing for generateContent API response
-                if result.get("candidates") and result["candidates"][0].get("content") and result["candidates"][0]["content"].get("parts"):
-                    insight_text = result["candidates"][0]["content"]["parts"][0].get("text", "")
-
-                if insight_text:
-                    st.write(f"**Insight:** {insight_text.strip()}")
+                if result and result.get("candidates") and result["candidates"][0].get("content") and result["candidates"][0]["content"].get("parts"):
+                    raw_json_text = result["candidates"][0]["content"]["parts"][0].get("text", "{}")
+                    try:
+                        parsed_response = json.loads(raw_json_text)
+                        verdict = parsed_response.get("verdict", "HOLD")
+                        insight_text = parsed_response.get("insight", "No additional insights available from the analytics model.")
+                        # Mock confidence based on verdict for display, as actual confidence isn't directly returned by the model in this schema
+                        if verdict == "BUY":
+                            confidence = 0.8
+                        elif verdict == "SELL":
+                            confidence = 0.8
+                        else:
+                            confidence = 0.6
+                    except json.JSONDecodeError:
+                        st.error("Error parsing response from analytics model. Received unexpected format.")
                 else:
-                    st.info("No additional insights available from the analytics model.")
+                    st.info("No structured insights available from the analytics model.")
+
+                # Map verdict to color
+                color = "green" if verdict=="BUY" else "red" if verdict=="SELL" else "orange"
+
+                # Display main verdict
+                st.markdown(f"<h3 style='color:{color};'>Recommendation: {verdict} (Confidence: {int(confidence*100)}%)</h3>", unsafe_allow_html=True)
+                st.write(f"**Insight:** {insight_text.strip()}")
+
             except requests.exceptions.RequestException as req_e:
                 st.error(f"Error communicating with the analytics model: {req_e}. Please ensure your API key is correctly configured and check your network connection.")
             except Exception as e:
