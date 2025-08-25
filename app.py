@@ -17,69 +17,67 @@ st.markdown("""
 
 st.markdown('<p class="big-font">📊 Stock Market Analyzer Dashboard</p>', unsafe_allow_html=True)
 
-# --- Stock Input ---
+# --- 1️⃣ Stock Input ---
 st.markdown('<p class="section-header">1️⃣ Enter Stock Symbol</p>', unsafe_allow_html=True)
 stock_input = st.text_input("Stock Symbol (e.g., AAPL, MSFT):", "AAPL")
 
+# --- 2️⃣ Compare Stocks ---
 st.markdown('<p class="section-header">2️⃣ Compare with Reputed Stocks</p>', unsafe_allow_html=True)
 reputed_stocks = ['AAPL','MSFT','GOOGL','AMZN','TSLA','FB','NVDA','JPM','V','DIS',
                   'MA','PYPL','NFLX','ADBE','INTC','CSCO','CRM','ORCL','NKE','KO',
                   'PFE','MRK','ABBV','PEP','XOM','CVX','WMT','T','UNH','HD']
 selected_stocks = st.multiselect("Select comparison stocks:", reputed_stocks, default=['AAPL','MSFT'])
 
-# --- Fetch Stock Data ---
+# --- Fetch Main Stock Data ---
 main_stock_df = get_stock_data(stock_input)
 
-# Defensive check for data
 if main_stock_df is None or main_stock_df.empty or 'Close' not in main_stock_df.columns:
-    st.error("No valid data found for this stock. Please check the symbol and try again.")
+    st.error("No valid stock data found. Check the symbol.")
 else:
-    # --- AWS-style KPIs ---
+    # --- 3️⃣ KPIs ---
     st.markdown('<p class="section-header">3️⃣ Stock KPIs</p>', unsafe_allow_html=True)
-    latest, avg, high, low = calculate_kpis(main_stock_df)
 
-    # Defensive conversion to numeric
-    def safe_float(val):
+    def safe_number(val):
         try:
-            val = float(val)
-            if math.isnan(val):
+            num = float(val)
+            if math.isnan(num):
                 return 0.0
-            return val
+            return num
         except:
             return 0.0
 
-    latest = safe_float(latest)
-    avg = safe_float(avg)
-    high = safe_float(high)
-    low = safe_float(low)
+    latest, avg, high, low = calculate_kpis(main_stock_df)
+    latest = safe_number(latest)
+    avg = safe_number(avg)
+    high = safe_number(high)
+    low = safe_number(low)
 
-    # KPI layout (AWS-style columns)
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     kpi1.metric("Latest Price", f"${latest:.2f}")
     kpi2.metric("Average Price (1Y)", f"${avg:.2f}")
     kpi3.metric("1-Year High", f"${high:.2f}")
     kpi4.metric("1-Year Low", f"${low:.2f}")
 
-    # --- Price Chart ---
+    # --- 4️⃣ Price Trend ---
     st.markdown('<p class="section-header">4️⃣ Price Trend</p>', unsafe_allow_html=True)
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=main_stock_df['Date'], y=main_stock_df['Close'], mode='lines', name='Close Price'))
     fig.update_layout(title=f"{stock_input} Price Trend (1Y)", xaxis_title="Date", yaxis_title="Price (USD)")
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- Gemini Verdict ---
+    # --- 5️⃣ Gemini Verdict ---
     st.markdown('<p class="section-header">5️⃣ Buy/Sell/Hold Verdict</p>', unsafe_allow_html=True)
     verdict, confidence = get_gemini_verdict(stock_input, main_stock_df['Close'].tolist())
     color = "green" if verdict=="BUY" else "red" if verdict=="SELL" else "orange"
     st.markdown(f"<h3 style='color:{color};'>💡 Verdict: {verdict} (Confidence: {confidence*100:.1f}%)</h3>", unsafe_allow_html=True)
 
-    # --- Comparison Table ---
+    # --- 6️⃣ Comparison Table ---
     st.markdown('<p class="section-header">6️⃣ Comparison with Selected Stocks</p>', unsafe_allow_html=True)
     comparison_data = {}
     for symbol in selected_stocks:
         df = get_stock_data(symbol)
         if df is not None and not df.empty and 'Close' in df.columns:
-            comparison_data[symbol] = safe_float(df['Close'].iloc[-1])
+            comparison_data[symbol] = safe_number(df['Close'].iloc[-1])
 
     if comparison_data:
         comp_df = pd.DataFrame(list(comparison_data.items()), columns=['Stock','Latest Close'])
@@ -87,7 +85,7 @@ else:
     else:
         st.info("No data available for selected comparison stocks.")
 
-    # --- Top Performing Stocks (AWS-style Insight) ---
+    # --- 7️⃣ Top Performing Stocks ---
     st.markdown('<p class="section-header">7️⃣ Top Performing Stocks</p>', unsafe_allow_html=True)
     if comparison_data:
         better_stocks = compare_stocks(comparison_data, latest)
