@@ -1,14 +1,16 @@
 def calculate_kpis(df):
-    """Return latest, average, high, low prices safely as floats."""
+    """Return latest, average, high, low prices as float numbers."""
     if df is None or df.empty or 'Close' not in df.columns:
         return 0.0, 0.0, 0.0, 0.0
 
-    latest = df['Close'].iloc[-1] if not df['Close'].empty else 0.0
-    avg = df['Close'].mean() if not df['Close'].empty else 0.0
-    high = df['Close'].max() if not df['Close'].empty else 0.0
-    low = df['Close'].min() if not df['Close'].empty else 0.0
+    latest = df['Close'].iloc[-1]  # <-- get scalar, not Series
+    avg = df['Close'].mean()
+    high = df['Close'].max()
+    low = df['Close'].min()
 
+    # Convert to plain float
     return float(latest), float(avg), float(high), float(low)
+
 
 def compare_stocks(stock_dict, base_price):
     """Return list of stocks performing better than base_price."""
